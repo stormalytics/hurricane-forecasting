@@ -1,0 +1,5 @@
+Good range for feature cropping:
+
+Center: -65 Lon, 25 Lat
+Width: 128
+Height= 64
