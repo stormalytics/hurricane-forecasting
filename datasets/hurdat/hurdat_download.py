@@ -21,10 +21,11 @@ def download_hurdat(data_dir):
         with DownloadProgressBar(unit='B', unit_scale=True, miniters=1) as t:
             os.makedirs(data_dir+"hurdat/", exist_ok=True) 
             urllib.request.urlretrieve(BASE_URL, data_dir+"hurdat/"+FILE_NAME, reporthook=t.update_to)
+            print(data_dir+"hurdat/"+FILE_NAME)
     except Exception:
         print("Failed to download file")
 
 
 if __name__ == "__main__":
-    DATA_DIR = "../../data/"
+    DATA_DIR = "./data/"
     download_hurdat(DATA_DIR)

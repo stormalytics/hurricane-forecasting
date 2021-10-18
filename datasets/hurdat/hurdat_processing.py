@@ -5,6 +5,7 @@ import math
 from pyproj import Geod
 from joblib import Parallel, delayed
 import datetime
+from global_land_mask import globe
 
 
 
@@ -74,8 +75,8 @@ def process_hurdat_data(data_dir):
 
     hurricane_df_list = []
 
-    for atcf_code, hurrican_df in source_df.groupby('atcf_code'):
-        hurricane_df_list.append(hurrican_df)
+    for atcf_code, hurricane_df in source_df.groupby('atcf_code', sort=False):
+        hurricane_df_list.append(hurricane_df)
 
     def hurricane_missing_values_filter(x):
         flag = True
@@ -87,10 +88,6 @@ def process_hurdat_data(data_dir):
 
     def odd_time_row_filter(x):
         x_filtered = x[((x['hour'] % 6) == 0) & (x['minute'] == 0)]
-        # print(x['atcf_code'].iloc[0])
-        # if x['atcf_code'].iloc[0] == 'AL041992':
-        #     print(x['hour'])
-        #     print(x_filtered['hour'])
         return x_filtered
 
     def calculate_delta_distance_and_azimuth(x):
@@ -104,8 +101,10 @@ def process_hurdat_data(data_dir):
             dist = [x / 1000.0 for x in dist]
             return dist, az12
 
-        x['delta_distance'], x['azimuth']= delta_distance_azimuth(x['latitude-6'].tolist(),x['longitude-6'].tolist(),x['latitude'].tolist(),x['longitude'].tolist())
-
+        x['delta_distance'], x['azimuth'] = delta_distance_azimuth(x['latitude-6'].tolist(),x['longitude-6'].tolist(),x['latitude'].tolist(),x['longitude'].tolist())
+        x['delta_distance_x'] = np.sin(np.deg2rad(x['azimuth']))*x['delta_distance']
+        x['delta_distance_y'] = np.cos(np.deg2rad(x['azimuth']))*x['delta_distance']
+        
         del x['latitude-6']
         del x['longitude-6']
         return x
@@ -125,18 +124,21 @@ def process_hurdat_data(data_dir):
         x = x.apply(extract_dt_info, axis=1)
         return x
 
-    def calculate_aday(x):
-        x['aday'] = np.exp(np.square(x['day_of_year']-253)/900)
+    def calculate_jday(x):
+        x['jday'] = np.abs(x['day_of_year']-253)
         return x
 
     def calculate_vpre(x):
         x['vpre'] = x['max_sus_wind'] * x['min_pressure']
+        x['vpre_inverse_scaled'] = (x['max_sus_wind'] * x['min_pressure']) / (x['max_sus_wind'] + x['min_pressure'])
         return x
 
     def calculate_landfall(x):
-        x['landfall'] = x.apply(lambda x: 1 if x['record_id'] == 'L' else 0,axis=1)
+        x['landfall'] = globe.is_land(x['latitude'], x['longitude'])
+        x['landfall'] = x['landfall'].astype(int)
         return x
 
+    """
     def calculate_time_shifted_features(x):
         shifts = [1,2,3,4,5,6,7,8,-1,-4]
         d_t = 6
@@ -146,7 +148,7 @@ def process_hurdat_data(data_dir):
                     'max_sus_wind', 'min_pressure',
                     'delta_distance', 'azimuth',
                     'day_of_year', 'minute_of_day',
-                    'aday',
+                    'vday',
                     'x','y',
                     'vpre',
                     'landfall']
@@ -162,57 +164,13 @@ def process_hurdat_data(data_dir):
 
 
 
-
-
-
-        # x[['year-6', 'month-6', 'day-6', 'hour-6', 'minute-6']] = x[['year', 'month', 'day', 'hour', 'minute']].shift(1)
-        # x[['record_id-6', 'system_status-6']] = x[['record_id', 'system_status']].shift(1)
-        # x[['latitude-6', 'longitude-6']] = x[['latitude', 'longitude']].shift(1)
-        # x[['max_sus_wind-6', 'min_pressure-6']] = x[['max_sus_wind', 'min_pressure']].shift(1)
-        # x[['delta_distance-6', 'azimuth-6']] = x[['delta_distance', 'azimuth']].shift(1)
-        # x[['day_of_year-6', 'minute_of_day-6']] = x[['day_of_year', 'minute_of_day']].shift(1)
-        # x[['aday-6']] = x[['aday']].shift(1)
-        # x[['x-6','y-6']] = x[['x','y']].shift(1)
-        # x[['vpre-6']] = x[['vpre']].shift(1)
-        # x[['landfall-6']] = x[['landfall']].shift(1)
-
-
-        # x[['year-12', 'month-12', 'day-12', 'hour-12', 'minute-12']] = x[['year', 'month', 'day', 'hour', 'minute']].shift(2)
-        # x[['record_id-12', 'system_status-12']] = x[['record_id', 'system_status']].shift(2)
-        # x[['latitude-12', 'longitude-12']] = x[['latitude', 'longitude']].shift(2)
-        # x[['max_sus_wind-12', 'min_pressure-12']] = x[['max_sus_wind', 'min_pressure']].shift(2)
-        # x[['delta_distance-12', 'azimuth-12']] = x[['delta_distance', 'azimuth']].shift(2)
-        # x[['day_of_year-12', 'minute_of_day-12']] = x[['day_of_year', 'minute_of_day']].shift(2)
-        # x[['aday-12']] = x[['aday']].shift(2)
-        # x[['x-12','y-12']] = x[['x','y']].shift(2)
-        # x[['vpre-12']] = x[['vpre']].shift(2)
-        # x[['landfall-12']] = x[['landfall']].shift(2)
-
-
-        # x[['year+6', 'month+6', 'day+6', 'hour+6', 'minute+6']] = x[['year', 'month', 'day', 'hour', 'minute']].shift(-1)
-        # x[['record_id+6', 'system_status+6']] = x[['record_id', 'system_status']].shift(-1)
-        # x[['latitude+6', 'longitude+6']] = x[['latitude', 'longitude']].shift(-1)
-        # x[['max_sus_wind+6', 'min_pressure+6']] = x[['max_sus_wind', 'min_pressure']].shift(-1)
-        # x[['delta_distance+6', 'azimuth+6']] = x[['delta_distance', 'azimuth']].shift(-1)
-        # x[['day_of_year+6', 'minute_of_day+6']] = x[['day_of_year', 'minute_of_day']].shift(-1)
-        # x[['aday+6']] = x[['aday']].shift(-1)
-        # x[['x+6','y+6']] = x[['x','y']].shift(-1)
-        # x[['vpre+6']] = x[['vpre']].shift(-1)
-        # x[['landfall+6']] = x[['landfall']].shift(-1)
-
-
-        # x[['year+24', 'month+24', 'day+24', 'hour+24', 'minute+24']] = x[['year', 'month', 'day', 'hour', 'minute']].shift(-4)
-        # x[['record_id+24', 'system_status+24']] = x[['record_id', 'system_status']].shift(-4)
-        # x[['latitude+24', 'longitude+24']] = x[['latitude', 'longitude']].shift(-4)
-        # x[['max_sus_wind+24', 'min_pressure+24']] = x[['max_sus_wind', 'min_pressure']].shift(-4)
-        # x[['delta_distance+24', 'azimuth+24']] = x[['delta_distance', 'azimuth']].shift(-4)
-        # x[['day_of_year+24', 'minute_of_day+24']] = x[['day_of_year', 'minute_of_day']].shift(-4)
-        # x[['aday+24']] = x[['aday']].shift(-4)
-        # x[['x+24','y+24']] = x[['x','y']].shift(-4)
-        # x[['vpre+24']] = x[['vpre']].shift(-4)
-        # x[['landfall+24']] = x[['landfall']].shift(-4)
-
         x.dropna(inplace=True)
+        return x
+    """
+
+    def create_time_idx(x):
+        x = x.sort_values(by=['year', 'month', 'day', 'hour'])
+        x['time_idx'] = np.arange(len(x.index))
         return x
 
     print("#### Cleaning and Feature Extraction ####")
@@ -222,8 +180,6 @@ def process_hurdat_data(data_dir):
 
     print("Filtering each hurricane for off interval times...")
     hurricane_df_list = list(map(odd_time_row_filter, hurricane_df_list))
-
-    # input("test")
 
     print("Calculating azimuth and delta distance features...")
     # hurricane_df_list = list(map(calculate_delta_distance_and_azimuth, hurricane_df_list))
@@ -237,9 +193,9 @@ def process_hurdat_data(data_dir):
     # hurricane_df_list = list(map(calculate_new_dt_info, hurricane_df_list))
     hurricane_df_list = Parallel(n_jobs=-1,verbose=0)(delayed(calculate_new_dt_info)(h_df) for h_df in hurricane_df_list)
 
-    print("Calculating aday feature...")
-    # hurricane_df_list = list(map(calculate_aday, hurricane_df_list))
-    hurricane_df_list = Parallel(n_jobs=-1,verbose=0)(delayed(calculate_aday)(h_df) for h_df in hurricane_df_list)
+    print("Calculating jday feature...")
+    # hurricane_df_list = list(map(calculate_jday, hurricane_df_list))
+    hurricane_df_list = Parallel(n_jobs=-1,verbose=0)(delayed(calculate_jday)(h_df) for h_df in hurricane_df_list)
 
     print("Calculating vpre feature...")
     # hurricane_df_list = list(map(calculate_vpre, hurricane_df_list))
@@ -249,17 +205,27 @@ def process_hurdat_data(data_dir):
     # hurricane_df_list = list(map(calculate_landfall, hurricane_df_list))
     hurricane_df_list = Parallel(n_jobs=-1,verbose=0)(delayed(calculate_landfall)(h_df) for h_df in hurricane_df_list)
 
-    print("Calculating time shifted feature...")
+    # print("Calculating time shifted feature...")
     # hurricane_df_list = list(map(calculate_time_shifted_features, hurricane_df_list))
-    hurricane_df_list = Parallel(n_jobs=-1,verbose=0)(delayed(calculate_time_shifted_features)(h_df) for h_df in hurricane_df_list)
+    # hurricane_df_list = Parallel(n_jobs=-1,verbose=0)(delayed(calculate_time_shifted_features)(h_df) for h_df in hurricane_df_list)
 
-    print("Done")
+    print("Creating time idx feature...")
+    # hurricane_df_list = list(map(create_time_idx, hurricane_df_list))
+    hurricane_df_list = Parallel(n_jobs=-1, verbose=0)(delayed(create_time_idx)(h_df) for h_df in hurricane_df_list)
 
-    hurricane_df_list = [h_df for h_df in hurricane_df_list if not h_df.empty] 
+    print("Filtering out hurricanes with empty dataframes...")
+    hurricane_df_list = [h_df for h_df in hurricane_df_list if not h_df.empty]
+
+    print("Filtering out hurricanes before 1980...")
+    hurricane_df_list = [h_df for h_df in hurricane_df_list if np.all(h_df['year'] > 1979)]
+
+    print("Filtering out everything that doesnt reach HU and TS status...")
+    hurricane_df_list = [h_df for h_df in hurricane_df_list if np.any(h_df['system_status'] == 'HU') or np.any(h_df['system_status'] == 'TS')]
 
     final_df = pd.concat(hurricane_df_list)
     final_df = final_df.sort_values(by=['year','atcf_code', 'month','day', 'hour'])
-    final_df = final_df[final_df['year'] > 1979]
+
+    print("Done")
 
     print(final_df)
 
@@ -268,8 +234,6 @@ def process_hurdat_data(data_dir):
     print("Done")
 
 
-
-
 if __name__ == "__main__":
-    DATA_DIR = "../../data/"
+    DATA_DIR = "./data/"
     process_hurdat_data(DATA_DIR)
