@@ -170,9 +170,6 @@ def path_distance_error_location(pred, actual):
     return average_error
 
 
-# path_distance_error_displacement(pred, actual)
-
-
 # def ts_exp_loss(pred, actual, alpha=12, loss_fn=nn.MSELoss(reduction='none')):
 #     loss_result = loss_fn(pred, actual)
 
@@ -311,5 +308,5 @@ columns = [f'future_horizon_{(i+1)*6}' for i in range(future_horizon)]
 error_distances_df.columns = columns
 print(error_distances_df.describe())
 
-sns.displot(data=error_distances_df, kind="ecdf")
+sns.displot(data=error_distances_df, kind="kde")
 plt.show()
