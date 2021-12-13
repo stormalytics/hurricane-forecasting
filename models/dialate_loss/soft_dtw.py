@@ -1,6 +1,8 @@
 import numpy as np
 import torch
+from numba import jit
 from torch.autograd import Function
+
 
 def pairwise_distances(x, y=None):
     '''
@@ -17,10 +19,12 @@ def pairwise_distances(x, y=None):
     else:
         y_t = torch.transpose(x, 0, 1)
         y_norm = x_norm.view(1, -1)
-    
+
     dist = x_norm + y_norm - 2.0 * torch.mm(x, y_t)
     return torch.clamp(dist, 0.0, float('inf'))
 
+
+@jit(nopython=True)
 def compute_softdtw(D, gamma):
   N = D.shape[0]
   M = D.shape[1]
@@ -37,6 +41,8 @@ def compute_softdtw(D, gamma):
       R[i, j] = D[i - 1, j - 1] + softmin
   return R
 
+
+@jit(nopython=True)
 def compute_softdtw_backward(D_, R, gamma):
   N = D_.shape[0]
   M = D_.shape[1]
@@ -57,40 +63,38 @@ def compute_softdtw_backward(D_, R, gamma):
       c = np.exp(c0)
       E[i, j] = E[i + 1, j] * a + E[i, j + 1] * b + E[i + 1, j + 1] * c
   return E[1:N + 1, 1:M + 1]
- 
+
 
 class SoftDTWBatch(Function):
     @staticmethod
-    def forward(ctx, D, gamma = 1.0): # D.shape: [batch_size, N , N]
+    def forward(ctx, D, gamma=1.0):  # D.shape: [batch_size, N , N]
         dev = D.device
-        batch_size,N,N = D.shape
+        batch_size, N, N = D.shape
         gamma = torch.FloatTensor([gamma]).to(dev)
         D_ = D.detach().cpu().numpy()
         g_ = gamma.item()
 
         total_loss = 0
-        R = torch.zeros((batch_size, N+2 ,N+2)).to(dev)   
-        for k in range(0, batch_size): # loop over all D in the batch    
-            Rk = torch.FloatTensor(compute_softdtw(D_[k,:,:], g_)).to(dev)
-            R[k:k+1,:,:] = Rk
-            total_loss = total_loss + Rk[-2,-2]
+        R = torch.zeros((batch_size, N+2, N+2)).to(dev)
+        for k in range(0, batch_size):  # loop over all D in the batch
+            Rk = torch.FloatTensor(compute_softdtw(D_[k, :, :], g_)).to(dev)
+            R[k:k+1, :, :] = Rk
+            total_loss = total_loss + Rk[-2, -2]
         ctx.save_for_backward(D, R, gamma)
         return total_loss / batch_size
-  
+
     @staticmethod
     def backward(ctx, grad_output):
         dev = grad_output.device
         D, R, gamma = ctx.saved_tensors
-        batch_size,N,N = D.shape
+        batch_size, N, N = D.shape
         D_ = D.detach().cpu().numpy()
         R_ = R.detach().cpu().numpy()
         g_ = gamma.item()
 
-        E = torch.zeros((batch_size, N ,N)).to(dev) 
-        for k in range(batch_size):         
-            Ek = torch.FloatTensor(compute_softdtw_backward(D_[k,:,:], R_[k,:,:], g_)).to(dev)
-            E[k:k+1,:,:] = Ek
+        E = torch.zeros((batch_size, N, N)).to(dev)
+        for k in range(batch_size):
+            Ek = torch.FloatTensor(compute_softdtw_backward(D_[k, :, :], R_[k, :, :], g_)).to(dev)
+            E[k:k+1, :, :] = Ek
 
         return grad_output * E, None
-
-
