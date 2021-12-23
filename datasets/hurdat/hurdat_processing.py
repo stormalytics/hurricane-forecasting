@@ -8,8 +8,6 @@ import datetime
 from global_land_mask import globe
 
 
-
-
 def process_hurdat_data(data_dir):
     hurdat = []
     data_file_lines = []
@@ -202,8 +200,8 @@ def process_hurdat_data(data_dir):
     hurricane_df_list = Parallel(n_jobs=-1,verbose=0)(delayed(calculate_vpre)(h_df) for h_df in hurricane_df_list)
 
     print("Calculating landfall feature...")
-    # hurricane_df_list = list(map(calculate_landfall, hurricane_df_list))
-    hurricane_df_list = Parallel(n_jobs=-1,verbose=0)(delayed(calculate_landfall)(h_df) for h_df in hurricane_df_list)
+    hurricane_df_list = list(map(calculate_landfall, hurricane_df_list))
+    # hurricane_df_list = Parallel(n_jobs=-1,verbose=0)(delayed(calculate_landfall)(h_df) for h_df in hurricane_df_list)
 
     # print("Calculating time shifted feature...")
     # hurricane_df_list = list(map(calculate_time_shifted_features, hurricane_df_list))
@@ -216,8 +214,8 @@ def process_hurdat_data(data_dir):
     print("Filtering out hurricanes with empty dataframes...")
     hurricane_df_list = [h_df for h_df in hurricane_df_list if not h_df.empty]
 
-    print("Filtering out hurricanes before 1980...")
-    hurricane_df_list = [h_df for h_df in hurricane_df_list if np.all(h_df['year'] > 1979)]
+    print("Filtering out hurricanes before 1982...")
+    hurricane_df_list = [h_df for h_df in hurricane_df_list if np.all(h_df['year'] >= 1982)]
 
     print("Filtering out everything that doesnt reach HU and TS status...")
     hurricane_df_list = [h_df for h_df in hurricane_df_list if np.any(h_df['system_status'] == 'HU') or np.any(h_df['system_status'] == 'TS')]

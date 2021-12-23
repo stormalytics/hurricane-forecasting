@@ -25,7 +25,6 @@ for atcf_code, hurricane_df in df.groupby('atcf_code', sort=False):
 
     dts = list(map(lambda x: datetime.datetime(*x), zip(year, month, day, hour)))
     dts = np.array(dts)
-    
 
     pres = hurricane_df["min_pressure"].to_numpy()
     wind = hurricane_df["max_sus_wind"].to_numpy()

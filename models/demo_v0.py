@@ -99,19 +99,19 @@ class MLP(nn.Module):
             nn.Flatten(),
             nn.Linear(past_horizon*input_vars_len, hidden_size),
             nn.ReLU(),
-            nn.LayerNorm(hidden_size),
+            nn.LayerNorm(hidden_size, eps=1e-4),
 
             Skip(nn.Sequential(nn.Linear(hidden_size, hidden_size),
                                nn.ReLU(),
-                               nn.LayerNorm(hidden_size))),
+                               nn.LayerNorm(hidden_size, eps=1e-4))),
 
             Skip(nn.Sequential(nn.Linear(hidden_size, hidden_size),
                                nn.ReLU(),
-                               nn.LayerNorm(hidden_size))),
+                               nn.LayerNorm(hidden_size, eps=1e-4))),
 
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
-            nn.LayerNorm(hidden_size),
+            nn.LayerNorm(hidden_size, eps=1e-4),
 
             nn.Linear(hidden_size, target_vars_len*future_horizon),
             nn.Unflatten(1, torch.Size([future_horizon, target_vars_len]))
@@ -126,21 +126,22 @@ class TCN_MLP(nn.Module):
     def __init__(self, input_vars_len: int, target_vars_len: int, past_horizon: int = 1, future_horizon: int = 1, hidden_size=32):
         super(TCN_MLP, self).__init__()
         self.layers = nn.Sequential(
-            nn.BatchNorm1d(input_vars_len),
             TemporalConvNet(past_horizon, [input_vars_len, 16, hidden_size], kernel_size=6, dropout=0.0),
             nn.Flatten(),
 
             nn.Linear(hidden_size*input_vars_len, hidden_size),
             nn.ReLU(),
-            nn.LayerNorm(hidden_size),
+            # nn.LayerNorm(hidden_size),
 
             Skip(nn.Sequential(nn.Linear(hidden_size, hidden_size),
                                nn.ReLU(),
-                               nn.LayerNorm(hidden_size))),
+                            #    nn.LayerNorm(hidden_size)
+                               )),
 
             Skip(nn.Sequential(nn.Linear(hidden_size, hidden_size),
                                nn.ReLU(),
-                               nn.LayerNorm(hidden_size))),
+                            #    nn.LayerNorm(hidden_size)
+                               )),
 
             nn.Linear(hidden_size, target_vars_len*future_horizon),
             nn.Unflatten(1, torch.Size([future_horizon, target_vars_len]))
@@ -323,11 +324,11 @@ model = TCN_MLP(past_horizon=past_horizon, future_horizon=future_horizon,
 model = model.to(device)
 print(model)
 
-loss_fn = nn.L1Loss()
+# loss_fn = nn.L1Loss()
 # loss_fn = TSExpLoss(10, loss.L1Loss(reduction='none'))
-# loss_fn = TSExpLoss(1/12, haversine)
+# loss_fn = TSExpLoss(0, haversine)
 # loss_fn = DIALATELoss(device)
-# loss_fn = SDTWLoss(use_cuda=False, gamma=0.1)
+loss_fn = SDTWLoss(use_cuda=True, gamma=0.1)
 optimizer = Adam(model.parameters(), lr=1e-3, weight_decay=1e-3)
 
 

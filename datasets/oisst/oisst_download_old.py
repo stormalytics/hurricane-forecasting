@@ -3,41 +3,50 @@ import os
 import urllib.request
 import tqdm
 from joblib import Parallel, delayed
+import pandas as pd
 
 
+EXAMPLE = "https://www.ncei.noaa.gov/data/sea-surface-temperature-optimum-interpolation/v2.1/access/avhrr/198201/oisst-avhrr-v02r01.19820101.nc"
+BASE_URL = "https://www.ncei.noaa.gov/data/sea-surface-temperature-optimum-interpolation/v2.1/access/avhrr/"
 
-
-EXAMPLE = "https://www.ncei.noaa.gov/thredds/fileServer/OisstBase/NetCDF/AVHRR/198109/avhrr-only-v2.19810901.nc"
-BASE_URL = "https://www.ncei.noaa.gov/thredds/fileServer/OisstBase/NetCDF/AVHRR/"
-
-START_DATE = datetime.datetime(year=1981, month=9, day=1)
-END_DATE = datetime.datetime(year=2018, month=12, day=31)
+DATA_DIR = "./data/"
+HURDATE_PROCESSED_FP = DATA_DIR + "hurdat/hurdat2_processed.csv"
+RAW_DATA_DIR = DATA_DIR + "oisst/raw_data/"
 
 
 def download_oisst_single(t, raw_data_dir):
-    file_url = BASE_URL+ t.strftime("%Y%m") + "/avhrr-only-v2." + t.strftime("%Y%m%d") + ".nc"
-    file_name = "avhrr-only-v2." + t.strftime("%Y%m%d") + ".nc"
+    file_url = BASE_URL + t.strftime("%Y%m") + "/oisst-avhrr-v02r01." + t.strftime("%Y%m%d") + ".nc"
+    file_name = "oisst-avhrr-v02r01." + t.strftime("%Y%m%d") + ".nc"
+
     # print(file_url)
     # print(file_name)
-
-    # print("Downloading " + file_name)
+    # print(f"Downloading: {file_name}")
+    
     try:
         urllib.request.urlretrieve(file_url, raw_data_dir+file_name)
     except Exception:
-        print("Failed to download file: " + file_name)
+        print(f"Failed to download file: {file_name}")
 
 
-def download_oisst():
-    delta = END_DATE - START_DATE
+def download_oisst(hurdat_processed_fp, raw_data_dir):
+    hurdat_processed_df = pd.read_csv(hurdat_processed_fp)
+    # print(hurdat_processed_df)
+
     dates = []
-    for i in range(delta.days + 1):
-        dates.append(START_DATE + datetime.timedelta(days=i))
-    raw_data_dir = "./raw_data/"
+    for index, row in hurdat_processed_df.iterrows():
+        year = int(row["year"])
+        month = int(row["month"])
+        day = int(row["day"])
+        # print(year,month,day,hour)
+        date = datetime.datetime(year, month, day)
+        if date not in dates:
+            dates.append(date)
+
+    raw_data_dir = "./data/oisst/raw_data/"
     os.makedirs(raw_data_dir, exist_ok=True)
 
 
-    Parallel(n_jobs=-1,verbose=11)(delayed(download_oisst_single)(d, raw_data_dir) for d in dates)
-
+    Parallel(n_jobs=-1,verbose=0)(delayed(download_oisst_single)(d, raw_data_dir) for d in tqdm.tqdm(dates))
     # for date in dates:
     #     download_oisst_single(date, raw_data_dir)
         
@@ -45,4 +54,4 @@ def download_oisst():
 
 
 if __name__ == "__main__":
-    download_oisst()
+    download_oisst(HURDATE_PROCESSED_FP, RAW_DATA_DIR)
