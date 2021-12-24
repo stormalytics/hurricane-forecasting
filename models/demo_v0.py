@@ -44,33 +44,37 @@ class HURDAT(Dataset):
 
         self.generated_samples = self.generate_all_ts_samples()
 
-    def generate_all_ts_samples(self) -> list[dict]:
+    def generate_all_ts_samples(self) -> List[dict]:
         all_samples = []
         for atcf_code, hurricane_df in tqdm.tqdm(self.hurdat_table.groupby(self.grouping_var, sort=False)):
             storm_samples = self.generate_storm_ts_samples(hurricane_df)
             all_samples.extend(storm_samples)
         return all_samples
 
-    def generate_storm_ts_samples(self, storm_df) -> list[dict]:
+    def generate_storm_ts_samples(self, storm_df) -> List[dict]:
         data = []
         for w in storm_df.rolling(window=self.past_horizon+self.future_horizon):
-            if w.shape[0] == self.past_horizon+self.future_horizon:
-                data_window = {}
+            if w.shape[0] != self.past_horizon+self.future_horizon:
+                continue
+            if w.head(self.past_horizon).iloc[-1]["system_status"] not in ["TS", "HU"]:
+                continue
 
-                data_window["input"] = torch.tensor(
-                    w.head(self.past_horizon)[self.input_vars].values, dtype=torch.float)
-                data_window["input_time_idx"] = torch.tensor(
-                    w.head(self.past_horizon)[self.time_idx].values, dtype=torch.float)
+            data_window = {}
 
-                data_window["output"] = torch.tensor(w.tail(self.future_horizon)[
-                                                     self.target_vars].values, dtype=torch.float)
-                data_window["output_time_idx"] = torch.tensor(
-                    w.tail(self.future_horizon)[self.time_idx].values, dtype=torch.float)
+            data_window["input"] = torch.tensor(
+                w.head(self.past_horizon)[self.input_vars].values, dtype=torch.float)
+            data_window["input_time_idx"] = torch.tensor(
+                w.head(self.past_horizon)[self.time_idx].values, dtype=torch.float)
 
-                data_window["window_time_idx"] = torch.tensor(w[self.time_idx].values, dtype=torch.float)
-                data_window["atcf_code"] = w['atcf_code'].iloc[0]
+            data_window["output"] = torch.tensor(w.tail(self.future_horizon)[
+                                                    self.target_vars].values, dtype=torch.float)
+            data_window["output_time_idx"] = torch.tensor(
+                w.tail(self.future_horizon)[self.time_idx].values, dtype=torch.float)
 
-                data.append(data_window)
+            data_window["window_time_idx"] = torch.tensor(w[self.time_idx].values, dtype=torch.float)
+            data_window["atcf_code"] = w['atcf_code'].iloc[0]
+
+            data.append(data_window)
         return data
 
     def __len__(self):
@@ -126,21 +130,21 @@ class TCN_MLP(nn.Module):
     def __init__(self, input_vars_len: int, target_vars_len: int, past_horizon: int = 1, future_horizon: int = 1, hidden_size=32):
         super(TCN_MLP, self).__init__()
         self.layers = nn.Sequential(
-            TemporalConvNet(past_horizon, [input_vars_len, 16, hidden_size], kernel_size=6, dropout=0.0),
+            TemporalConvNet(past_horizon, [input_vars_len, hidden_size//2, hidden_size], kernel_size=6, dropout=0.0),
             nn.Flatten(),
 
             nn.Linear(hidden_size*input_vars_len, hidden_size),
             nn.ReLU(),
-            # nn.LayerNorm(hidden_size),
+            nn.LayerNorm(hidden_size),
 
             Skip(nn.Sequential(nn.Linear(hidden_size, hidden_size),
                                nn.ReLU(),
-                            #    nn.LayerNorm(hidden_size)
+                               nn.LayerNorm(hidden_size)
                                )),
 
             Skip(nn.Sequential(nn.Linear(hidden_size, hidden_size),
                                nn.ReLU(),
-                            #    nn.LayerNorm(hidden_size)
+                               nn.LayerNorm(hidden_size)
                                )),
 
             nn.Linear(hidden_size, target_vars_len*future_horizon),
@@ -218,7 +222,8 @@ class TSExpLoss:
 
         exp_weights_t = torch.arange(loss_result.shape[-2], dtype=float, requires_grad=True).to(
             pred.get_device()).unsqueeze(1).repeat(1, loss_result.shape[-1])
-        exp_weights = torch.exp(exp_weights_t*self.alpha)/torch.e
+        exp_weights = torch.exp(exp_weights_t/self.alpha)/torch.e
+        # print(exp_weights)
 
         loss_result_exp = loss_result * exp_weights
         loss_result_weighted_average = torch.sum(loss_result_exp, dim=[1, 2]) / torch.sum(exp_weights_t)
@@ -255,7 +260,8 @@ class SDTWLoss:
         return loss.mean()
 
 
-
+def smape(pred, actual):
+    return torch.mean(2*torch.abs(pred-actual)/(torch.abs(pred)+torch.abs(actual)))
 
 ########################
 ### DEMO STARTS HERE ###
@@ -274,7 +280,7 @@ output_vars = ["longitude", "latitude"]
 
 
 past_horizon = 12
-future_horizon = 8
+future_horizon = 12
 hurdat_dataset = HURDAT(data, input_vars=input_vars, target_vars=output_vars,
                         grouping_var="atcf_code", time_idx="time_idx",
                         past_horizon=past_horizon, future_horizon=future_horizon)
@@ -324,11 +330,13 @@ model = TCN_MLP(past_horizon=past_horizon, future_horizon=future_horizon,
 model = model.to(device)
 print(model)
 
+# loss_fn = smape
 # loss_fn = nn.L1Loss()
 # loss_fn = TSExpLoss(10, loss.L1Loss(reduction='none'))
-# loss_fn = TSExpLoss(0, haversine)
+loss_fn = path_distance_error_location
+# loss_fn = TSExpLoss(12, haversine)
 # loss_fn = DIALATELoss(device)
-loss_fn = SDTWLoss(use_cuda=True, gamma=0.1)
+# loss_fn = SDTWLoss(use_cuda=True, gamma=0.1)
 optimizer = Adam(model.parameters(), lr=1e-3, weight_decay=1e-3)
 
 
@@ -405,6 +413,7 @@ error_distances_df = pd.DataFrame(error_distances.numpy().astype("float"))
 columns = [f'future_horizon_{(i+1)*6}' for i in range(future_horizon)]
 error_distances_df.columns = columns
 print(error_distances_df.describe())
+error_distances_df.to_csv("./results/track_error_tcn.csv", index=False)
 
 sns.displot(data=error_distances_df, kind="kde")
 plt.xlim(0, 400)

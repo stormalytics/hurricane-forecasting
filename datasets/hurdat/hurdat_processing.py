@@ -217,7 +217,7 @@ def process_hurdat_data(data_dir):
     print("Filtering out hurricanes before 1982...")
     hurricane_df_list = [h_df for h_df in hurricane_df_list if np.all(h_df['year'] >= 1982)]
 
-    print("Filtering out everything that doesnt reach HU and TS status...")
+    print("Filtering out everything that doesn't reach HU and TS status...")
     hurricane_df_list = [h_df for h_df in hurricane_df_list if np.any(h_df['system_status'] == 'HU') or np.any(h_df['system_status'] == 'TS')]
 
     final_df = pd.concat(hurricane_df_list)

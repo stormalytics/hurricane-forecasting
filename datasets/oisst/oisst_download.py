@@ -1,39 +1,61 @@
+import datetime
 import os
+import urllib.request
 import tqdm
 from joblib import Parallel, delayed
-import requests 
-from lxml import etree
-import urllib.request
-from pprint import pprint
+import pandas as pd
 
 
-CATALOG_URL = "https://www.ncei.noaa.gov/thredds/catalog/OisstBase/NetCDF/V2.1/AVHRR/"
-DOWNLOAD_URL = "https://www.ncei.noaa.gov/thredds/fileServer/OisstBase/NetCDF/V2.1/AVHRR/"
+EXAMPLE = "https://www.ncei.noaa.gov/data/sea-surface-temperature-optimum-interpolation/v2.1/access/avhrr/198201/oisst-avhrr-v02r01.19820101.nc"
+BASE_URL = "https://www.ncei.noaa.gov/data/sea-surface-temperature-optimum-interpolation/v2.1/access/avhrr/"
 
-def download_cygnss(data_dir, year=2019):
-    print(f"Downloading OISST data: {year}")
-    os.makedirs(data_dir+"oisst/raw_data/", exist_ok=True)
+DATA_DIR = "./data/"
+HURDATE_PROCESSED_FP = DATA_DIR + "hurdat/hurdat2_processed.csv"
+RAW_DATA_DIR = DATA_DIR + "oisst/raw_data/"
 
-    files_to_download = []
-    request_year_month_xml = requests.get(CATALOG_URL+f"/catalog.xml")
-    # print(request_year_month_xml.text.encode())
-    year_month_xml = etree.fromstring(request_year_month_xml.text.encode())
-    # print(year_month_xml)
-    for year_month_element in year_month_xml.findall(r'.//{*}catalogRef'):
-        year_month = year_month_element.attrib['{http://www.w3.org/1999/xlink}title']
-        if int(year_month[:4])== year:
-            # print(year_month)
-            request_day_xml = requests.get(CATALOG_URL+f"{year_month}/catalog.xml")
-            day_xml = etree.fromstring(request_day_xml.text.encode())
-            for e_file in day_xml.findall(".//{*}dataset"):
-                if e_file.attrib['name'].split('.')[-1] == 'nc':
-                    nc_file_name = e_file.attrib['name']
-                    full_download_path = DOWNLOAD_URL+f"{year_month}/" + nc_file_name
-                    files_to_download.append((full_download_path, data_dir+"oisst/raw_data/"+nc_file_name))
-    pprint(files_to_download)
-    download_single = lambda r, l: urllib.request.urlretrieve(r, l)
-    Parallel(n_jobs=-1,verbose=11)(delayed(download_single)(r, l) for r, l in files_to_download)
+
+def download_oisst_single(t, raw_data_dir):
+    file_url = BASE_URL + t.strftime("%Y%m") + "/oisst-avhrr-v02r01." + t.strftime("%Y%m%d") + ".nc"
+    file_name = "oisst-avhrr-v02r01." + t.strftime("%Y%m%d") + ".nc"
+
+    # print(file_url)
+    # print(file_name)
+    # print(f"Downloading: {file_name}")
+    
+    try:
+        urllib.request.urlretrieve(file_url, raw_data_dir+file_name)
+    except Exception:
+        print(f"Failed to download file: {file_name}")
+
+
+def download_oisst(hurdat_processed_fp, raw_data_dir):
+    hurdat_processed_df = pd.read_csv(hurdat_processed_fp)
+    # print(hurdat_processed_df)
+
+    dates = []
+    for index, row in hurdat_processed_df.iterrows():
+        year = int(row["year"])
+        month = int(row["month"])
+        day = int(row["day"])
+        # print(year,month,day,hour)
+        date = datetime.datetime(year, month, day)
+        if date not in dates:
+            dates.append(date)
+        
+        date_lagged = date - datetime.timedelta(days=1)
+        if date_lagged not in dates:
+            dates.append(date_lagged)
+
+    raw_data_dir = "./data/oisst/raw_data/"
+    os.makedirs(raw_data_dir, exist_ok=True)
+
+
+    Parallel(n_jobs=-1,verbose=0)(delayed(download_oisst_single)(d, raw_data_dir) for d in tqdm.tqdm(dates))
+    # for date in dates:
+    #     download_oisst_single(date, raw_data_dir)
+        
+
+
 
 if __name__ == "__main__":
-    DATA_DIR = "../../data/"
-    download_cygnss(DATA_DIR)
+    download_oisst(HURDATE_PROCESSED_FP, RAW_DATA_DIR)

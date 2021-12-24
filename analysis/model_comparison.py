@@ -55,6 +55,11 @@ y_t_decision_tree = np.array([np.mean(decision_tree_t_df[f'future_horizon_{str(t
 y_t_decision_tree_aligned = y_t_decision_tree[align_index]
 y_t_decision_tree_skill = (1-(y_t_decision_tree_aligned/y_t_bcd5))*100
 
+tcn_t_df = pd.read_csv('./results/track_error_tcn.csv')
+y_t_tcn = np.array([np.mean(tcn_t_df[f'future_horizon_{str(t)}']) for t in x_new_models])
+y_t_tcn_aligned = y_t_tcn[align_index]
+y_t_tcn_skill = (1-(y_t_tcn_aligned/y_t_bcd5))*100
+
 
 fig, axs = plt.subplots(2, 2)
 
@@ -63,6 +68,7 @@ axs[0, 0].plot(x, y_t_bcd5, label='BCD5')
 axs[0, 0].plot(x_aligned, y_t_xgboost_aligned, label='Boosted Tree')
 axs[0, 0].plot(x_aligned, y_t_ridge_aligned, label='Ridge Regression')
 axs[0, 0].plot(x_aligned, y_t_decision_tree_aligned, label='Decision Tree')
+axs[0, 0].plot(x_aligned, y_t_tcn_aligned, label='TCN')
 axs[0, 0].set_xticks(x)
 axs[0, 0].grid(axis="x")
 axs[0, 0].set_xlim(0, 72)
@@ -74,6 +80,7 @@ axs[1, 0].plot(x, y_t_ofcl_skill, label='OFCL')
 axs[1, 0].plot(x_aligned, y_t_xgboost_skill, label='Boosted Tree')
 axs[1, 0].plot(x_aligned, y_t_ridge_skill, label='Ridge Regression')
 axs[1, 0].plot(x_aligned, y_t_decision_tree_skill, label='Decision Tree')
+axs[1, 0].plot(x_aligned, y_t_tcn_skill, label='TCN')
 axs[1, 0].set_xticks(x)
 axs[1, 0].grid(axis="x")
 axs[1, 0].set_xlim(0, 72)
