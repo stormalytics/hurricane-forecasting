@@ -1,4 +1,4 @@
-# Hurricane Forecasting
+# Deep Learning for Hurricane Forecasting
 
 This project aims to enable the creation of hurricane forecasting products that are useful to decision-makers using deep learning methodologies. These forecasting products can include track (position) forecasts, intensity forecasts, wind forecasts, and storm surge forecasts. The goal is to achieve a relatively similar or smaller error than the official National Hurricane Center (NHC) forecast error.
 
