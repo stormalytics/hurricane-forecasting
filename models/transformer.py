@@ -16,6 +16,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 from transformers import PerceiverModel, PerceiverConfig
 from transformers.models.perceiver.modeling_perceiver import PerceiverBasicDecoder
 
+from soft_dtw.soft_dtw_cuda import SoftDTW
 
 class HURDAT(Dataset):
     def __init__(self, hurdat_table, input_vars: list[str], target_vars: list[str], grouping_var: str, time_idx: str, past_horizon: int = 1, future_horizon: int = 1):
@@ -81,7 +82,7 @@ class HURDAT(Dataset):
         return sample
 
 class HurricaneForcastTransformer(nn.Module):
-    def __init__(self, input_vars_len: int, target_vars_len: int, past_horizon: int, future_horizon: int, hidden_size=512) -> None:
+    def __init__(self, input_vars_len: int, target_vars_len: int, past_horizon: int, future_horizon: int, hidden_size=128) -> None:
         super().__init__()
 
         self.input_vars_len = input_vars_len
@@ -100,7 +101,7 @@ class HurricaneForcastTransformer(nn.Module):
 
         self.transformer = nn.Transformer(
             d_model=hidden_size,
-            nhead=8,
+            nhead=4,
             num_encoder_layers=3,
             num_decoder_layers=3,
             dim_feedforward=hidden_size*2,
@@ -163,6 +164,16 @@ def path_distance_error_mae(pred, actual):
     diff_mean = torch.mean(diff_sum, dim=0)
     return diff_mean
 
+class SDTWLoss:
+    def __init__(self, gamma=0.1, use_cuda=False) -> None:
+        self.gamma = gamma
+        self.use_cuda = use_cuda
+        self.sdtw = SoftDTW(use_cuda=self.use_cuda, gamma=self.gamma)
+
+    def __call__(self, pred, actual):
+        loss = self.sdtw(pred, actual)
+        return loss.mean()
+
 def train_loop(dataloader, loss_fn, optimizer):
     model.train()
 
@@ -170,14 +181,18 @@ def train_loop(dataloader, loss_fn, optimizer):
     train_loss = 0
     train_error_distance = 0
 
+    scaler = torch.cuda.amp.GradScaler()
+
     for batch_idx, data in enumerate(dataloader):
+        optimizer.zero_grad()
+
         # Compute prediction and loss
         input_data, input_idx, output_idx = data["input"].to(device), data["input_time_idx"].to(device), data["output_time_idx"].to(device)
         output_data = data["output"].to(device)
+
         pred = model(input_data, input_idx, output_idx)
         loss = loss_fn(pred, output_data)
-        # Backpropagation
-        optimizer.zero_grad()
+        
         loss.backward()
         optimizer.step()
 
@@ -252,9 +267,9 @@ if __name__ == "__main__":
     train_data, test_data = random_split(
         hurdat_dataset, [train_count, test_count], generator=torch.Generator().manual_seed(42))
 
-    batch_size = 256
-    train_dataloader = DataLoader(train_data, batch_size=batch_size)
-    test_dataloader = DataLoader(test_data, batch_size=batch_size)
+    batch_size = 512
+    train_dataloader = DataLoader(train_data, batch_size=batch_size, pin_memory=True, shuffle=True)
+    test_dataloader = DataLoader(test_data, batch_size=batch_size, pin_memory=True, shuffle=True)
     test_dataloader_viewing = DataLoader(test_data, batch_size=1)
 
 
@@ -273,9 +288,11 @@ if __name__ == "__main__":
     # y_pred_demo = model(x_demo["input"].to(device), x_demo["input_time_idx"].to(device), x_demo["output_time_idx"].to(device))
 
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    loss_fn = path_distance_error_location
+    # optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-2)
+    # loss_fn = path_distance_error_location
     # loss_fn = path_distance_error_mae
+    loss_fn = SDTWLoss(gamma=0.1, use_cuda=True)
 
     epochs = 200
     for t in range(epochs):
