@@ -26,7 +26,7 @@ from soft_dtw.soft_dtw_cuda import SoftDTW
 class HURDAT(Dataset):
     def __init__(self, hurdat_table, input_vars: List[str], target_vars: List[str], grouping_var: str, time_idx: str, past_horizon: int = 1, future_horizon: int = 1):
 
-        self.hurdat_table = None
+        self.hurdat_table: pd.DataFrame = None
         if isinstance(hurdat_table, pd.DataFrame):
             self.hurdat_table = hurdat_table
         if isinstance(hurdat_table, str):
