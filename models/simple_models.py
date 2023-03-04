@@ -26,6 +26,8 @@ from sklearn.metrics import mean_absolute_error, make_scorer
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GridSearchCV, train_test_split
 
+import tsfresh
+
 import xgboost as xgb
 
 
@@ -118,6 +120,8 @@ data = next(iter(hurdat_dataset_dataloader))
 x = data["input"].cpu().detach().numpy()
 y = data["output"].cpu().detach().numpy()
 
+print(x)
+print(y)
 
 print(x.shape)
 print(y.shape)
